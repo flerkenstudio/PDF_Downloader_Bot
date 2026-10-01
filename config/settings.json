@@ -1,0 +1,17 @@
+{
+  "start_url": "https://ceoelection.mp.gov.in/ASSEMBLYELECTION.aspx",
+  "download_root": "downloads",
+  "log_file": "logs/download_log.csv",
+  "browser": {
+    "headless": true,
+    "slow_mo_ms": 0
+  },
+  "timeouts": {
+    "navigation_ms": 15000,
+    "action_ms": 10000,
+    "download_ms": 30000
+  },
+  "concurrency": 15,
+  "years": [2023, 2018, 2013, 2008, 2003],
+  "manual_captcha_allowed": true
+}
