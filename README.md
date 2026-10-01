@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform: Windows | Linux | macOS](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-blue.svg)]()
 
-An automated browser automation bot for downloading assembly election result PDFs (Form 20 and statistical reports) from the Chief Electoral Officer (CEO), Madhya Pradesh portal ([ceoelection.mp.gov.in](https://ceoelection.mp.gov.in/ASSEMBLYELECTION.aspx)).
+An automated browser automation bot for downloading assembly and parliamentary election result PDFs (Form 20 and statistical reports) from the Chief Electoral Officer (CEO), Madhya Pradesh portal ([ceoelection.mp.gov.in](https://ceoelection.mp.gov.in/ASSEMBLYELECTION.aspx)).
 
 ---
 
@@ -28,13 +28,14 @@ An automated browser automation bot for downloading assembly election result PDF
 
 ## 🔍 Overview
 
-The MP CEO election portal is built on **ASP.NET WebForms**, which dynamically loads assembly constituency data through server postbacks rather than exposing static URLs. This bot automates constituency lookup, dispatches required ASP.NET change events, matches constituency names phonetically, handles legacy government SSL certificates, and saves PDFs locally in a structured folder format.
+The MP CEO election portal is built on **ASP.NET WebForms**, which dynamically loads constituency data through server postbacks rather than exposing static URLs. This bot automates constituency lookup across Assembly Elections (2023, 2018, 2013, 2008, 2003) and Parliamentary Elections (2024 Lok Sabha), dispatches required ASP.NET change events, matches constituency names phonetically, handles legacy government SSL certificates, and saves PDFs locally in a structured folder format.
 
 ---
 
 ## ✨ Key Features
 
-- **ASP.NET WebForms Event Handling**: Interacts with cascading dropdowns (`ddlDist` / `ddlD` $\rightarrow$ `ddlAC`) and triggers ASP.NET `__doPostBack` events programmatically.
+- **Multi-Year Assembly & Parliamentary Support**: Automates downloads for 2024 Lok Sabha, 2023 Assembly, 2018 Assembly, and historical statistical booklets.
+- **ASP.NET WebForms Event Handling**: Interacts with cascading dropdowns (`ddlDist` / `ddlD` $\rightarrow$ `ddlAC` / `ddlForm20`) and triggers ASP.NET `__doPostBack` events programmatically.
 - **Phonetic & Fuzzy Name Matching**: Normalizes transliteration variations between Excel inputs and official dropdown values (e.g., `Sabalgarh` $\leftrightarrow$ `SABALAGADH`, `Joura` $\leftrightarrow$ `JAURA`, `Sumawali` $\leftrightarrow$ `SUMAOLI`, stripping `(SC)` / `(ST)` flags).
 - **Legacy SSL Transport**: Utilizes a custom HTTP transport layer with `ssl.OP_LEGACY_SERVER_CONNECT` to bypass legacy OpenSSL renegotiation restrictions on government servers.
 - **Resumable & Safe Operations**: Logs execution status (`DONE`, `SKIPPED`, `FAILED`) in `logs/download_log.csv` to ensure repeat runs skip already downloaded files seamlessly.
@@ -120,10 +121,10 @@ Place your target constituency list in `input.xlsx` (`Sheet1`). The file must in
 
 ## 💻 Usage & CLI Commands
 
-### 1. Default Run (2023 & 2018 Elections)
+### 1. Default Run (2024, 2023, & 2018 Elections)
 
 ```bash
-python -m src.main --excel input.xlsx --years 2023 2018
+python -m src.main --excel input.xlsx --years 2024 2023 2018
 ```
 
 ### 2. Visible Browser Mode (Headed)
@@ -139,7 +140,7 @@ python -m src.main --excel input.xlsx --years 2023 --headed
 Simulates workflow and dropdown selection without downloading PDFs:
 
 ```bash
-python -m src.main --excel input.xlsx --years 2023 --dry-run
+python -m src.main --excel input.xlsx --years 2024 --dry-run
 ```
 
 ### 4. Run via Batch Script (Windows)
@@ -168,7 +169,7 @@ Project settings are managed in `config/settings.json`:
     "action_ms": 15000,
     "download_ms": 30000
   },
-  "years": [2023, 2018, 2013, 2008, 2003],
+  "years": [2024, 2023, 2018, 2013, 2008, 2003],
   "manual_captcha_allowed": true
 }
 ```
@@ -181,6 +182,12 @@ All files are stored cleanly under the `downloads/` directory structured by elec
 
 ```text
 downloads/
+├── 2024/
+│   ├── Parliamentary_Constituency/
+│   │   ├── 1_MORENA.pdf
+│   │   └── 2_BHIND.pdf
+│   └── Sheopur/
+│       └── 1_Sheopur.pdf
 ├── 2023/
 │   ├── Sheopur/
 │   │   ├── 1_Sheopur.pdf

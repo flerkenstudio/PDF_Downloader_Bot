@@ -12,6 +12,6 @@
     "download_ms": 30000
   },
   "concurrency": 15,
-  "years": [2023, 2018, 2013, 2008, 2003],
+  "years": [2024, 2023, 2018, 2013, 2008, 2003],
   "manual_captcha_allowed": true
 }

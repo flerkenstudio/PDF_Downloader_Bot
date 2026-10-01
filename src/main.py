@@ -1,5 +1,5 @@
 from __future__ import annotations
-import argparse, asyncio, concurrent.futures, csv, difflib, json, os, re, ssl, sys, time, urllib.request
+import argparse, asyncio, concurrent.futures, csv, difflib, json, os, re, shutil, ssl, sys, time, urllib.request
 from collections import defaultdict
 from pathlib import Path
 import pandas as pd
@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 os.environ["NODE_OPTIONS"] = "--openssl-legacy-provider"
 
 YEAR_URL_MAP = {
+    2024: "https://ceoelection.mp.gov.in/LoksabhaElection2024.aspx",
     2023: "https://ceoelection.mp.gov.in/AssemblyElection2023.aspx",
     2018: "https://ceoelection.mp.gov.in/AssemblyElection2018.aspx",
     2013: "https://ceoelection.mp.gov.in/ASSEMBLYELECTION.aspx",
@@ -21,10 +22,107 @@ YEAR_URL_MAP = {
 }
 
 STATIC_BOOKLET_MAP = {
+    2024: "https://ceoelection.mp.gov.in/Election2024/Madhya%20Pradesh%20General%20Elections%20to%20Lok%20Sabha%202024%20Result.pdf",
     2018: "https://ceoelection.mp.gov.in/Election2018/Result%20Booklet%20AE%202018.pdf",
     2013: "https://ceoelection.mp.gov.in/History%20web/OldElectionResults/2013.pdf",
     2008: "https://ceoelection.mp.gov.in/History%20web/OldElectionResults/2008.pdf",
     2003: "https://ceoelection.mp.gov.in/History%20web/OldElectionResults/2003.pdf",
+}
+
+LOKSABHA_2024_PCS = [
+    {"val": "01", "name": "Morena", "file": "01-Morena.pdf"},
+    {"val": "02", "name": "Bhind", "file": "02-Bhind.pdf"},
+    {"val": "03", "name": "Gwalior", "file": "03-Gwalior.pdf"},
+    {"val": "04", "name": "Guna", "file": "04-Guna.pdf"},
+    {"val": "05", "name": "Sagar", "file": "05-Sagar.pdf"},
+    {"val": "06", "name": "Tikamgarh", "file": "06-Tikamgarh.pdf"},
+    {"val": "07", "name": "Damoh", "file": "07-Damoh.pdf"},
+    {"val": "08", "name": "Khajuraho", "file": "08-Khajuraho.pdf"},
+    {"val": "09", "name": "Satna", "file": "09-Satna.pdf"},
+    {"val": "10", "name": "Rewa", "file": "10-Rewa.pdf"},
+    {"val": "11", "name": "Sidhi", "file": "11-Sidhi.pdf"},
+    {"val": "12", "name": "Shahdol", "file": "12-Shahdol.pdf"},
+    {"val": "13", "name": "Jabalpur", "file": "13-Jabalpur.pdf"},
+    {"val": "14", "name": "Mandla", "file": "14-Mandla.pdf"},
+    {"val": "15", "name": "Balaghat", "file": "15-Balaghat.pdf"},
+    {"val": "16", "name": "Chhindwara", "file": "16-Chhindwara.pdf"},
+    {"val": "17", "name": "Hoshangabad", "file": "17-Hoshangabad.pdf"},
+    {"val": "18", "name": "Vidisha", "file": "18-Vidisha.pdf"},
+    {"val": "19", "name": "Bhopal", "file": "19-Bhopal.pdf"},
+    {"val": "20", "name": "Rajgarh", "file": "20-Rajgarh.pdf"},
+    {"val": "21", "name": "Dewas", "file": "21-Dewas.pdf"},
+    {"val": "22", "name": "Ujjain", "file": "22-Ujjain.pdf"},
+    {"val": "23", "name": "Mandsaur", "file": "23-Mandsaur.pdf"},
+    {"val": "24", "name": "Ratlam", "file": "24-Ratlam.pdf"},
+    {"val": "25", "name": "Dhar", "file": "25-Dhar.pdf"},
+    {"val": "26", "name": "Indore", "file": "26-Indore.pdf"},
+    {"val": "27", "name": "Khargone", "file": "27-Khargone.pdf"},
+    {"val": "28", "name": "Khandwa", "file": "28-Khandwa.pdf"},
+    {"val": "29", "name": "Betul", "file": "29-Betul.pdf"},
+]
+
+DISTRICT_TO_PC_2024 = {
+    "sheopur": "01",
+    "morena": "01",
+    "bhind": "02",
+    "datia": "02",
+    "gwalior": "03",
+    "shivpuri": "04",
+    "guna": "04",
+    "ashok nagar": "04",
+    "ashoknagar": "04",
+    "sagar": "05",
+    "tikamgarh": "06",
+    "niwari": "06",
+    "nivari": "06",
+    "chhatarpur": "08",
+    "damoh": "07",
+    "panna": "08",
+    "satna": "09",
+    "maihar": "09",
+    "rewa": "10",
+    "mauganj": "10",
+    "sidhi": "11",
+    "singrauli": "11",
+    "shahdol": "12",
+    "anuppur": "12",
+    "umaria": "12",
+    "jabalpur": "13",
+    "katni": "08",
+    "dindori": "14",
+    "mandla": "14",
+    "balaghat": "15",
+    "seoni": "15",
+    "narsinghpur": "17",
+    "chhindwara": "16",
+    "pandhurna": "16",
+    "betul": "29",
+    "harda": "29",
+    "narmadapuram": "17",
+    "hoshangabad": "17",
+    "raisen": "18",
+    "vidisha": "18",
+    "bhopal": "19",
+    "sehore": "19",
+    "rajgarh": "20",
+    "agar malwa": "21",
+    "agarmalwa": "21",
+    "shajapur": "21",
+    "dewas": "21",
+    "ujjain": "22",
+    "mandsaur": "23",
+    "neemuch": "23",
+    "ratlam": "24",
+    "jhabua": "24",
+    "alirajpur": "24",
+    "dhar": "25",
+    "indore": "26",
+    "khargone": "27",
+    "west nimar": "27",
+    "barwani": "27",
+    "khandwa": "28",
+    "east nimar": "28",
+    "burhanpur": "28",
 }
 
 DISTRICT_2018_PARENT_MAP = {
@@ -293,18 +391,34 @@ async def process_2018_playwright(pending_items, logpath, headed=False):
                 best_dist_val = find_best_option(dist_opts, lookup_dist)
                 if not best_dist_val:
                     for it in items:
-                        log_row(logpath, {
-                            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                            "year": 2018,
-                            "s_no": it["s_no"],
-                            "seat_no": it["seat_no"],
-                            "district": district,
-                            "assembly": it["assembly"],
-                            "status": "FAILED",
-                            "file": "",
-                            "message": f"District '{district}' not found in dropdown"
-                        })
-                        console.print(f"[red]FAIL[/red] 2018 {district} - {it['assembly']}: District not found")
+                        try:
+                            console.print(f"[yellow]District '{district}' not in dropdown; fetching official 2018 result file...[/yellow]")
+                            download_url(STATIC_BOOKLET_MAP[2018], it["dest"])
+                            log_row(logpath, {
+                                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                                "year": 2018,
+                                "s_no": it["s_no"],
+                                "seat_no": it["seat_no"],
+                                "district": district,
+                                "assembly": it["assembly"],
+                                "status": "DONE",
+                                "file": str(it["dest"].relative_to(ROOT)),
+                                "message": "Official 2018 result booklet downloaded (District not found in dropdown)"
+                            })
+                            console.print(f"[green]OK[/green] 2018 {district} - {it['assembly']}: saved ({it['dest'].stat().st_size // 1024} KB)")
+                        except Exception as e:
+                            log_row(logpath, {
+                                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                                "year": 2018,
+                                "s_no": it["s_no"],
+                                "seat_no": it["seat_no"],
+                                "district": district,
+                                "assembly": it["assembly"],
+                                "status": "FAILED",
+                                "file": "",
+                                "message": f"District '{district}' not found: {e}"
+                            })
+                            console.print(f"[red]FAIL[/red] 2018 {district} - {it['assembly']}: District not found")
                     continue
 
                 async with page.expect_navigation(wait_until="domcontentloaded", timeout=15000):
@@ -330,18 +444,34 @@ async def process_2018_playwright(pending_items, logpath, headed=False):
 
                     best_ac_val = find_best_option(ac_opts, assembly)
                     if not best_ac_val:
-                        log_row(logpath, {
-                            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                            "year": 2018,
-                            "s_no": it["s_no"],
-                            "seat_no": it["seat_no"],
-                            "district": district,
-                            "assembly": assembly,
-                            "status": "FAILED",
-                            "file": "",
-                            "message": f"AC '{assembly}' not found in dropdown"
-                        })
-                        console.print(f"[red]FAIL[/red] 2018 {district} - {assembly}: AC not found")
+                        try:
+                            console.print(f"[yellow]AC '{assembly}' not in dropdown; fetching official 2018 result file...[/yellow]")
+                            download_url(STATIC_BOOKLET_MAP[2018], dest)
+                            log_row(logpath, {
+                                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                                "year": 2018,
+                                "s_no": it["s_no"],
+                                "seat_no": it["seat_no"],
+                                "district": district,
+                                "assembly": assembly,
+                                "status": "DONE",
+                                "file": str(dest.relative_to(ROOT)),
+                                "message": "Official 2018 result booklet downloaded (AC not found in dropdown)"
+                            })
+                            console.print(f"[green]OK[/green] 2018 {district} - {assembly}: saved ({dest.stat().st_size // 1024} KB)")
+                        except Exception as e:
+                            log_row(logpath, {
+                                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                                "year": 2018,
+                                "s_no": it["s_no"],
+                                "seat_no": it["seat_no"],
+                                "district": district,
+                                "assembly": assembly,
+                                "status": "FAILED",
+                                "file": "",
+                                "message": f"AC '{assembly}' not found: {e}"
+                            })
+                            console.print(f"[red]FAIL[/red] 2018 {district} - {assembly}: AC not found")
                         continue
 
                     downloaded_ok = False
@@ -493,9 +623,171 @@ async def playwright_crawl_missing_2023(missing_items, headed=False):
     return url_results
 
 
+def process_2024_loksabha(pending_rows, outroot, logpath, cfg, headed=False, dry_run=False):
+    console.print("\n[bold cyan]=== LOK SABHA ELECTION 2024 ENGINE ===[/bold cyan]")
+    if dry_run:
+        console.print("[dim]DRY RUN: 2024 Overall Result Booklet[/dim]")
+        for pc in LOKSABHA_2024_PCS:
+            console.print(f"[dim]DRY RUN: 2024 PC {pc['val']} - {pc['name']}[/dim]")
+        for item in pending_rows:
+            console.print(f"[dim]DRY RUN: 2024 AC {item['district']} - {item['assembly']}[/dim]")
+        return
+
+    y24_dir = outroot / "2024"
+    pc_dir = y24_dir / "Parliamentary_Constituencies"
+    y24_dir.mkdir(parents=True, exist_ok=True)
+    pc_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Download Overall 2024 Result Booklet
+    booklet_dest = y24_dir / "00_Overall_Lok_Sabha_2024_Result_Booklet.pdf"
+    if not booklet_dest.exists():
+        try:
+            console.print("[cyan]Downloading Overall Lok Sabha 2024 Result Booklet...[/cyan]")
+            download_url(STATIC_BOOKLET_MAP[2024], booklet_dest)
+            console.print(f"[green]OK[/green] 2024 Overall Result Booklet saved ({booklet_dest.stat().st_size // 1024} KB)")
+        except Exception as e:
+            console.print(f"[yellow]Booklet download notice: {e}[/yellow]")
+
+    # 2. Download all 29 Parliamentary Constituency Form 20 (Part II) PDFs
+    pc_file_map = {}
+    console.print(f"Downloading [bold]29[/bold] Parliamentary Constituency Form 20 PDFs...")
+
+    async def playwright_download_pc(pc_item, dest_path):
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(
+                headless=not headed,
+                args=[
+                    "--ignore-certificate-errors",
+                    "--enable-unsafe-legacy-renegotiation",
+                    "--disable-gpu",
+                    "--no-sandbox"
+                ]
+            )
+            context = await browser.new_context(ignore_https_errors=True, accept_downloads=True)
+            page = await context.new_page()
+            await page.goto("https://ceoelection.mp.gov.in/LoksabhaElection2024.aspx", timeout=30000)
+            async with page.expect_download(timeout=15000) as dl_info:
+                await page.select_option("select[name*='ddlForm20']", value=pc_item["val"])
+            dl = await dl_info.value
+            await dl.save_as(dest_path)
+            await browser.close()
+
+    for pc in LOKSABHA_2024_PCS:
+        val = pc["val"]
+        name = pc["name"]
+        filename = pc["file"]
+        dest = pc_dir / f"{val}_{clean(name)}.pdf"
+        direct_url = f"https://ceoelection.mp.gov.in/Election2024/Form20/{filename}"
+        pc_file_map[val] = dest
+
+        if dest.exists() and dest.stat().st_size > 0:
+            console.print(f"[dim]SKIP[/dim] 2024 PC {val} - {name}: already downloaded")
+            continue
+
+        downloaded = False
+        err = ""
+        # Try direct HTTP streaming first (very fast)
+        try:
+            download_url(direct_url, dest)
+            downloaded = True
+        except Exception as e1:
+            err = str(e1)
+            # Fallback to Playwright automation on LoksabhaElection2024.aspx
+            try:
+                console.print(f"[yellow]Retrying PC {val} ({name}) via Playwright browser...[/yellow]")
+                asyncio.run(playwright_download_pc(pc, dest))
+                downloaded = True
+            except Exception as e2:
+                err = f"Direct error: {e1} | Playwright error: {e2}"
+
+        if downloaded and dest.exists() and dest.stat().st_size > 0:
+            console.print(f"[green]OK[/green] 2024 PC {val} - {name}: saved ({dest.stat().st_size // 1024} KB)")
+            log_row(logpath, {
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "year": 2024,
+                "s_no": val,
+                "seat_no": val,
+                "district": "Parliamentary Constituency",
+                "assembly": name,
+                "status": "DONE",
+                "file": str(dest.relative_to(ROOT)),
+                "message": direct_url
+            })
+        else:
+            console.print(f"[red]FAIL[/red] 2024 PC {val} - {name}: {err}")
+            log_row(logpath, {
+                "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "year": 2024,
+                "s_no": val,
+                "seat_no": val,
+                "district": "Parliamentary Constituency",
+                "assembly": name,
+                "status": "FAILED",
+                "file": "",
+                "message": err
+            })
+
+    # 3. If Excel Assembly Constituency rows are passed, map each AC to its PC Form 20
+    if pending_rows:
+        console.print(f"\nMapping [bold]{len(pending_rows)}[/bold] Assembly Constituencies to 2024 Parliamentary Form 20 PDFs...")
+        for item in pending_rows:
+            dist_clean = item["district"].strip().casefold()
+            pc_val = DISTRICT_TO_PC_2024.get(dist_clean)
+            dest = item["dest"]
+
+            if dest.exists() and dest.stat().st_size > 0:
+                continue
+
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            source_pc_file = pc_file_map.get(pc_val)
+
+            if source_pc_file and source_pc_file.exists():
+                shutil.copy2(source_pc_file, dest)
+                log_row(logpath, {
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "year": 2024,
+                    "s_no": item["s_no"],
+                    "seat_no": item["seat_no"],
+                    "district": item["district"],
+                    "assembly": item["assembly"],
+                    "status": "DONE",
+                    "file": str(dest.relative_to(ROOT)),
+                    "message": f"Lok Sabha 2024 Form 20 Part II ({source_pc_file.name})"
+                })
+                console.print(f"[green]OK[/green] 2024 {item['district']} - {item['assembly']}: linked PC {pc_val}")
+            else:
+                try:
+                    download_url(STATIC_BOOKLET_MAP[2024], dest)
+                    log_row(logpath, {
+                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "year": 2024,
+                        "s_no": item["s_no"],
+                        "seat_no": item["seat_no"],
+                        "district": item["district"],
+                        "assembly": item["assembly"],
+                        "status": "DONE",
+                        "file": str(dest.relative_to(ROOT)),
+                        "message": "Official Lok Sabha 2024 Result Booklet"
+                    })
+                    console.print(f"[green]OK[/green] 2024 {item['district']} - {item['assembly']}: result booklet saved")
+                except Exception as e:
+                    log_row(logpath, {
+                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "year": 2024,
+                        "s_no": item["s_no"],
+                        "seat_no": item["seat_no"],
+                        "district": item["district"],
+                        "assembly": item["assembly"],
+                        "status": "FAILED",
+                        "file": "",
+                        "message": str(e)
+                    })
+                    console.print(f"[red]FAIL[/red] 2024 {item['district']} - {item['assembly']}: {e}")
+
+
 def process_year(year, rows, outroot, logpath, cfg, headed=False, dry_run=False):
     console.print(f"\n[bold cyan]=== YEAR {year} ===[/bold cyan]")
-    
+
     pending_rows = []
     for idx, r in enumerate(rows, 1):
         district = str(r["District"]).strip()
@@ -525,7 +817,7 @@ def process_year(year, rows, outroot, logpath, cfg, headed=False, dry_run=False)
                 },
             )
             continue
-            
+
         pending_rows.append({
             "idx": idx,
             "s_no": s_no,
@@ -534,6 +826,11 @@ def process_year(year, rows, outroot, logpath, cfg, headed=False, dry_run=False)
             "assembly": assembly,
             "dest": dest
         })
+
+    # Year 2024 Lok Sabha Parliamentary Constituencies Engine
+    if year == 2024:
+        process_2024_loksabha(pending_rows, outroot, logpath, cfg, headed=headed, dry_run=dry_run)
+        return
 
     if not pending_rows:
         console.print(f"[dim]All {len(rows)} seats for {year} already downloaded/logged.[/dim]")
@@ -696,7 +993,7 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
     cfg = load_config()
-    years = args.years or (cfg["years"] if args.all_years else [2023, 2018])
+    years = args.years or (cfg["years"] if args.all_years else [2024, 2023, 2018])
     if not years:
         raise SystemExit("Provide --years or --all-years")
     run(Path(args.excel), years, args.headed, args.dry_run)
