@@ -126,6 +126,7 @@ DISTRICT_TO_PC_2024 = {
 }
 
 DISTRICT_2018_PARENT_MAP = {
+    "narmadapuram": "hoshangabad",
     "maihar": "satna",
     "pandhurna": "chhindwara",
     "mauganj": "rewa",
@@ -140,6 +141,7 @@ def clean(s):
 def normalize_text(s):
     s = re.sub(r"\([^)]*\)", "", str(s))
     s = re.sub(r"[^a-z0-9]", "", s.casefold())
+    s = s.replace("narmadapuram", "hoshangabad")
     s = s.replace("garh", "gadh").replace("joura", "jaura").replace("wali", "oli").replace("v", "w")
     return s
 
@@ -727,37 +729,59 @@ def process_2024_loksabha(pending_rows, outroot, logpath, cfg, headed=False, dry
                 "message": err
             })
 
-    # 3. If Excel Assembly Constituency rows are passed, map each AC to its PC Form 20
+    # 3. Download individual District - Assembly wise Form 20 PDFs (seats 1 to 230)
     if pending_rows:
-        console.print(f"\nMapping [bold]{len(pending_rows)}[/bold] Assembly Constituencies to 2024 Parliamentary Form 20 PDFs...")
-        for item in pending_rows:
-            dist_clean = item["district"].strip().casefold()
-            pc_val = DISTRICT_TO_PC_2024.get(dist_clean)
-            dest = item["dest"]
+        console.print(f"\nDownloading [bold]{len(pending_rows)}[/bold] individual District - Assembly Form 20 PDFs...")
 
+        async def playwright_download_ac(dist_name, ac_name, dest_path):
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(
+                    headless=not headed,
+                    args=[
+                        "--ignore-certificate-errors",
+                        "--enable-unsafe-legacy-renegotiation",
+                        "--disable-gpu",
+                        "--no-sandbox"
+                    ]
+                )
+                context = await browser.new_context(ignore_https_errors=True, accept_downloads=True)
+                page = await context.new_page()
+                await page.goto("https://ceoelection.mp.gov.in/LoksabhaElection2024.aspx", timeout=30000)
+
+                dist_opts = await page.evaluate("() => Array.from(document.querySelector('select[name*=\"ddlDist\"]').options).map(o => ({text: o.text, val: o.value}))")
+                dist_val = find_best_option(dist_opts, dist_name)
+                if dist_val:
+                    async with page.expect_navigation(wait_until="domcontentloaded"):
+                        await page.select_option("select[name*='ddlDist']", value=dist_val)
+                    await page.wait_for_timeout(500)
+
+                    ac_opts = await page.evaluate("() => Array.from(document.querySelector('select[name*=\"ddlAC\"]').options).map(o => ({text: o.text, val: o.value}))")
+                    ac_val = find_best_option(ac_opts, ac_name)
+                    if ac_val:
+                        async with page.expect_download(timeout=15000) as dl_info:
+                            await page.select_option("select[name*='ddlAC']", value=ac_val)
+                        dl = await dl_info.value
+                        await dl.save_as(dest_path)
+                await browser.close()
+
+        for item in pending_rows:
+            dest = item["dest"]
             if dest.exists() and dest.stat().st_size > 0:
                 continue
 
+            seat_no = item.get("seat_no") or item.get("s_no")
+            seat_str = str(seat_no).split(".")[0].strip()
             dest.parent.mkdir(parents=True, exist_ok=True)
-            source_pc_file = pc_file_map.get(pc_val)
 
-            if source_pc_file and source_pc_file.exists():
-                shutil.copy2(source_pc_file, dest)
-                log_row(logpath, {
-                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "year": 2024,
-                    "s_no": item["s_no"],
-                    "seat_no": item["seat_no"],
-                    "district": item["district"],
-                    "assembly": item["assembly"],
-                    "status": "DONE",
-                    "file": str(dest.relative_to(ROOT)),
-                    "message": f"Lok Sabha 2024 Form 20 Part II ({source_pc_file.name})"
-                })
-                console.print(f"[green]OK[/green] 2024 {item['district']} - {item['assembly']}: linked PC {pc_val}")
-            else:
+            downloaded = False
+            err = ""
+
+            # Attempt 1: Direct Assembly Form 20 URL (FORM20_AC_{seat_no}.pdf)
+            if seat_str.isdigit():
+                ac_url = f"https://ceoelection.mp.gov.in/Election2024/FORM20AC/FORM20_AC_{int(seat_str)}.pdf"
                 try:
-                    download_url(STATIC_BOOKLET_MAP[2024], dest)
+                    download_url(ac_url, dest)
+                    downloaded = True
                     log_row(logpath, {
                         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
                         "year": 2024,
@@ -767,10 +791,73 @@ def process_2024_loksabha(pending_rows, outroot, logpath, cfg, headed=False, dry
                         "assembly": item["assembly"],
                         "status": "DONE",
                         "file": str(dest.relative_to(ROOT)),
-                        "message": "Official Lok Sabha 2024 Result Booklet"
+                        "message": ac_url
+                    })
+                    console.print(f"[green]OK[/green] 2024 {item['district']} - {item['assembly']}: Assembly Form 20 saved ({dest.stat().st_size // 1024} KB)")
+                except Exception as e1:
+                    err = str(e1)
+
+            # Attempt 2: Playwright District & Assembly dropdown selection
+            if not downloaded:
+                try:
+                    console.print(f"[yellow]Retrying {item['district']} - {item['assembly']} via Playwright browser...[/yellow]")
+                    asyncio.run(playwright_download_ac(item["district"], item["assembly"], dest))
+                    if dest.exists() and dest.stat().st_size > 0:
+                        downloaded = True
+                        log_row(logpath, {
+                            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                            "year": 2024,
+                            "s_no": item["s_no"],
+                            "seat_no": item["seat_no"],
+                            "district": item["district"],
+                            "assembly": item["assembly"],
+                            "status": "DONE",
+                            "file": str(dest.relative_to(ROOT)),
+                            "message": "Downloaded via Playwright District-AC dropdown"
+                        })
+                        console.print(f"[green]OK[/green] 2024 {item['district']} - {item['assembly']}: saved ({dest.stat().st_size // 1024} KB)")
+                except Exception as e2:
+                    err += f" | Playwright error: {e2}"
+
+            # Attempt 3: Parent Parliamentary Constituency Form 20
+            if not downloaded:
+                dist_clean = item["district"].strip().casefold()
+                pc_val = DISTRICT_TO_PC_2024.get(dist_clean)
+                source_pc_file = pc_file_map.get(pc_val)
+                if source_pc_file and source_pc_file.exists():
+                    shutil.copy2(source_pc_file, dest)
+                    downloaded = True
+                    log_row(logpath, {
+                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "year": 2024,
+                        "s_no": item["s_no"],
+                        "seat_no": item["seat_no"],
+                        "district": item["district"],
+                        "assembly": item["assembly"],
+                        "status": "DONE",
+                        "file": str(dest.relative_to(ROOT)),
+                        "message": f"Linked PC Form 20 ({source_pc_file.name})"
+                    })
+                    console.print(f"[green]OK[/green] 2024 {item['district']} - {item['assembly']}: saved via PC {pc_val}")
+
+            # Attempt 4: Overall Result Booklet fallback
+            if not downloaded:
+                try:
+                    download_url(STATIC_BOOKLET_MAP[2024], dest)
+                    downloaded = True
+                    log_row(logpath, {
+                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "year": 2024,
+                        "s_no": item["s_no"],
+                        "seat_no": item["seat_no"],
+                        "district": item["district"],
+                        "assembly": item["assembly"],
+                        "status": "DONE",
+                        "file": str(dest.relative_to(ROOT)),
+                        "message": "Official 2024 Result Booklet fallback"
                     })
                     console.print(f"[green]OK[/green] 2024 {item['district']} - {item['assembly']}: result booklet saved")
-                except Exception as e:
+                except Exception as e3:
                     log_row(logpath, {
                         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
                         "year": 2024,
@@ -780,9 +867,9 @@ def process_2024_loksabha(pending_rows, outroot, logpath, cfg, headed=False, dry
                         "assembly": item["assembly"],
                         "status": "FAILED",
                         "file": "",
-                        "message": str(e)
+                        "message": f"{err} | Final error: {e3}"
                     })
-                    console.print(f"[red]FAIL[/red] 2024 {item['district']} - {item['assembly']}: {e}")
+                    console.print(f"[red]FAIL[/red] 2024 {item['district']} - {item['assembly']}: failed ({err})")
 
 
 def process_year(year, rows, outroot, logpath, cfg, headed=False, dry_run=False):
